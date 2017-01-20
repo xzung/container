@@ -15,64 +15,77 @@ use Illuminate\Contracts\Container\BindingResolutionException as BindingResoluti
 class Container implements ArrayAccess, ContainerContract
 {
     /**
-     * The current globally available container (if any).
-     *
+     * The current globally available container (if any)
+     * 服务容器的全局实例
      * @var static
      */
     protected static $instance;
 
     /**
      * An array of the types that have been resolved.
-     *
+     * 用于存储已经解析过的types 
+      
+       什么是types?
+       它可以看做是服务容器给已经注册的的服务的门牌号，当我们注册一个服务到服务容器时，需要指定一个types,通常称为abstract types;
+       服务容器把注册的服务类和这个types关联起来；当我们后面需要解析出指定的服务类实例时，只需要向服务容器提供这个types ,服务容器就知道要解析那个服务了
+       如： $this->app->bind('one',function($app){
+            return new xxx();
+       });
+       
+       bind方法的参数 one 就是一个types , new xxx() 就是具体的服务对象了。  后面注册方法的$concrete参数就是指的具体的服务对象
+       
      * @var array
      */
     protected $resolved = [];
 
     /**
      * The container's bindings.
-     *
+     *  存储容器绑定（注册）好的所有服务实例
      * @var array
      */
     protected $bindings = [];
 
     /**
      * The container's shared instances.
-     *
+     * 存储服务容器的所有共享实例，即全局实例，就是单例
      * @var array
      */
     protected $instances = [];
 
     /**
      * The registered type aliases.
-     *
+     *  types 的别名 ，是的可以为types设置别名
      * @var array
      */
     protected $aliases = [];
 
     /**
      * The extension closures for services.
-     *
+     * 存储服务的扩展匿名函数
      * @var array
      */
     protected $extenders = [];
 
     /**
      * All of the registered tags.
-     *
+     * 存储所有的已经注册的tags
+      tags 和 上面 types 以及 alias 的区别是什么呢？
+      服务容器把一个bind 看做一个实体，types , alias ,tags 都是关联到这个实体上的附属属性；
+      tags 应该是为一个bind 打上的标签，算是对一个bind 的补充描述。  且tags 和bind 是多对多的关系。
      * @var array
      */
     protected $tags = [];
 
     /**
      * The stack of concretions currently being built.
-     *
+     *  存储当前正在被构建的具体对象
      * @var array
      */
     protected $buildStack = [];
 
     /**
      * The contextual binding map.
-     *
+     * 
      * @var array
      */
     public $contextual = [];
@@ -114,7 +127,7 @@ class Container implements ArrayAccess, ContainerContract
 
     /**
      * Define a contextual binding.
-     *
+     * 定义一个上下文绑定
      * @param  string  $concrete
      * @return \Illuminate\Contracts\Container\ContextualBindingBuilder
      */
@@ -125,7 +138,7 @@ class Container implements ArrayAccess, ContainerContract
 
     /**
      * Determine if the given abstract type has been bound.
-     *
+     *  探测指定的abstract type 是否已经被绑定
      * @param  string  $abstract
      * @return bool
      */
@@ -136,7 +149,7 @@ class Container implements ArrayAccess, ContainerContract
 
     /**
      * Determine if the given abstract type has been resolved.
-     *
+     * 探测一个指定的abstract type 是否已经被解析
      * @param  string  $abstract
      * @return bool
      */
@@ -151,7 +164,7 @@ class Container implements ArrayAccess, ContainerContract
 
     /**
      * Determine if a given string is an alias.
-     *
+     * 探测一个指定的字符串是否是别名
      * @param  string  $name
      * @return bool
      */
@@ -162,9 +175,12 @@ class Container implements ArrayAccess, ContainerContract
 
     /**
      * Register a binding with the container.
-     *
+     * 注册一个绑定， 一个成功的绑定操作就一个成功的注册了
+       绑定的含义是把一个abstract type 和一个具体的服务实例关联起来
      * @param  string|array  $abstract
+        $abstract 是 abstract type ，用于服务容器去追踪一个服务 
      * @param  \Closure|string|null  $concrete
+        $concrete 是一个具体的服务描述，可以是一个字符串，可以是一个匿名函数 ；无论是字符串，还是匿名函数服务容器都要能够从它那里得到一个服务实例
      * @param  bool  $shared
      * @return void
      */
@@ -173,6 +189,8 @@ class Container implements ArrayAccess, ContainerContract
         // If the given types are actually an array, we will assume an alias is being
         // defined and will grab this "real" abstract class name and register this
         // alias with the container so that it can be used as a shortcut for it.
+        // 若$abstract是数组,从$abstract中分别提取出"真正的"abstract类名 以及它的别名 
+        // 并在容器中注册这个别名，即使可以用别名替代"真正的"abstract类名 
         if (is_array($abstract)) {
             list($abstract, $alias) = $this->extractAlias($abstract);
 
@@ -182,6 +200,8 @@ class Container implements ArrayAccess, ContainerContract
         // If no concrete type was given, we will simply set the concrete type to the
         // abstract type. This will allow concrete type to be registered as shared
         // without being forced to state their classes in both of the parameter.
+        //如果具体类型没有被给，我们将简单的设置具体类型为抽象类型。
+        //这将容许在参数中没有强制申明它们的类时，具体类型仍可以作为共享的类型被注册
         $this->dropStaleInstances($abstract);
 
         if (is_null($concrete)) {
@@ -191,6 +211,8 @@ class Container implements ArrayAccess, ContainerContract
         // If the factory is not a Closure, it means it is just a class name which is
         // bound into this container to the abstract type and we will just wrap it
         // up inside its own Closure to give us more convenience when extending.
+        // 如果工厂（即 $concrete）不是一个匿名函数，意味着它仅仅是作为关联到 abstract type 的一个类名被绑定到容器中
+        // 我们将包裹它到一个匿名函数中，当要进行扩展的时候会提供更多的便利  
         if (! $concrete instanceof Closure) {
             $concrete = $this->getClosure($abstract, $concrete);
         }
@@ -200,6 +222,8 @@ class Container implements ArrayAccess, ContainerContract
         // If the abstract type was already resolved in this container we'll fire the
         // rebound listener so that any objects which have already gotten resolved
         // can have their copy of the object updated via the listener callbacks.
+        // 如果abstract type已经被解析过，我们将触发重新绑定的监听，
+        //因此任何已经被解析过的对象都可以通过这个监听器回调更新他们的对象副本
         if ($this->resolved($abstract)) {
             $this->rebound($abstract);
         }
@@ -236,7 +260,7 @@ class Container implements ArrayAccess, ContainerContract
 
     /**
      * Register a binding if it hasn't already been registered.
-     *
+     * 
      * @param  string  $abstract
      * @param  \Closure|string|null  $concrete
      * @param  bool  $shared
@@ -251,7 +275,7 @@ class Container implements ArrayAccess, ContainerContract
 
     /**
      * Register a shared binding in the container.
-     *
+     * 注册一个全局绑定，相当于单例
      * @param  string|array  $abstract
      * @param  \Closure|string|null  $concrete
      * @return void
@@ -263,7 +287,7 @@ class Container implements ArrayAccess, ContainerContract
 
     /**
      * Wrap a Closure such that it is shared.
-     *
+     *  封装一个匿名函数作为全局函数
      * @param  \Closure  $closure
      * @return \Closure
      */
@@ -285,7 +309,7 @@ class Container implements ArrayAccess, ContainerContract
 
     /**
      * Bind a shared Closure into the container.
-     *
+     * 绑定一个全局匿名函数到服务容器
      * @param  string    $abstract
      * @param  \Closure  $closure
      * @return void
@@ -319,7 +343,7 @@ class Container implements ArrayAccess, ContainerContract
 
     /**
      * Register an existing instance as shared in the container.
-     *
+     *  注册一个已经存储在的实例到服务容器，且是作为全局实例注册的
      * @param  string  $abstract
      * @param  mixed   $instance
      * @return void
@@ -342,8 +366,7 @@ class Container implements ArrayAccess, ContainerContract
         // can be updated with consuming classes that have gotten resolved here.
         $bound = $this->bound($abstract);
 
-        $this->instances[$abstract] = $instance;
-
+        $this->instances[$abstract] = $instance;  // 可见，$this->instances 属性里存储的都是全局实例
         if ($bound) {
             $this->rebound($abstract);
         }
@@ -351,7 +374,7 @@ class Container implements ArrayAccess, ContainerContract
 
     /**
      * Assign a set of tags to a given binding.
-     *
+     *  为一个已有的binding 设置一些tags
      * @param  array|string  $abstracts
      * @param  array|mixed   ...$tags
      * @return void
@@ -392,7 +415,7 @@ class Container implements ArrayAccess, ContainerContract
 
     /**
      * Alias a type to a different name.
-     *
+     * 为一个abstract type 设置一个别名
      * @param  string  $abstract
      * @param  string  $alias
      * @return void
@@ -606,7 +629,7 @@ class Container implements ArrayAccess, ContainerContract
 
     /**
      * Resolve the given type from the container.
-     *
+     *  通过指定的type 解析出服务实例
      * @param  string  $abstract
      * @param  array   $parameters
      * @return mixed
@@ -722,7 +745,7 @@ class Container implements ArrayAccess, ContainerContract
 
     /**
      * Instantiate a concrete instance of the given type.
-     *
+     * 通过指定的type 实例化一个具体的实例
      * @param  string  $concrete
      * @param  array   $parameters
      * @return mixed
