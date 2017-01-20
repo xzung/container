@@ -238,6 +238,8 @@ class Container implements ArrayAccess, ContainerContract
      */
     protected function getClosure($abstract, $concrete)
     {
+        
+        //  $c 是 $container ，回调的时候会传递container 实例过来
         return function ($c, $parameters = []) use ($abstract, $concrete) {
             $method = ($abstract == $concrete) ? 'build' : 'make';
 
